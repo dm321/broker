@@ -49,7 +49,7 @@ public class Depot {
 	
 	}
 	
-	public boolean canStockBeSold(StockOrder stockOrder)
+	public boolean canStockBeSold(StockOrder stockOrder) throws Exception
 	{
 		if(isStockPresent(stockOrder.getStock()))
 		{
@@ -59,54 +59,31 @@ public class Depot {
 			if(canAmountBeSold)
 				return true;
 			else
-				return false;
+				throw new Exception("not enough shares of "+stockOrder.getStock().getTicker());
 		}
 		else
-			return false;
+			 throw new Exception("user doesn't have any shares of  "+stockOrder.getStock().getTicker());
 		
 	}
 	
 	
 	
-	public boolean canStockBeBought(StockOrder stockOrder)
+	public boolean canStockBeBought(StockOrder stockOrder) throws Exception
 	{
 		double totalCost = stockOrder.getAmount() * stockOrder.getPrice();
 		
 		if(balance >= totalCost)
 			return true;
 			else
-				return false;
+				 throw new Exception("not enough cash");
 	}
 
 	
-	
-	
-	public void updateBalanceFromStockOrder(StockOrder stockOrder) throws Exception
+	public void buyStocks(StockOrder stockOrder) throws Exception
 	{
-		if("SELL".equals(stockOrder.getType()))
-		{
-			if(canStockBeSold(stockOrder))
-			{
-				balance += stockOrder.getAmount() * stockOrder.getPrice();
-			}
-			else
-			throw new Exception("not enough Stocks");
-			
-		}
-		else
-		{
-			if(canStockBeBought(stockOrder))
-			{
-				balance -= stockOrder.getAmount() * stockOrder.getPrice();
-			}
-			else
-				throw new Exception("not enough cash");
-		}
-	}
-	
-	
-	public void updateCurrentStocks(StockOrder stockOrder)
-	{
+		
+		canStockBeBought(stockOrder);
+		
 		Stock innerStock = new Stock();
 		innerStock.setPrice(stockOrder.getPrice());
 		innerStock.setTicker(stockOrder.getStock().getTicker());
@@ -123,7 +100,7 @@ public class Depot {
 		if (!isTickerPresent)
 		{
 			currentStocks.add(newestHolding);
-			System.out.println(newestHolding+"   TEST");
+			
 		}
 		else
 		{
@@ -154,13 +131,71 @@ public class Depot {
 	}
 	
 	
+	public void sellStocks(StockOrder stockOrder) throws Exception
+	{
+		
+		canStockBeSold(stockOrder); //throws exception if stock cannot be sold
+		
+		CurrentHolding oldHolding = currentStocks.stream().filter(currentHolding -> currentHolding.getStock().getTicker().equals(stockOrder.getStock().getTicker()))
+				                                          .findFirst().get();
+		
+		oldHolding.setAmount(oldHolding.getAmount()-stockOrder.getAmount());
+		oldHolding.setValue(oldHolding.getAmount()*oldHolding.getStock().getPrice());
+		
+		
+	}
+	
+	
+	
+	
+	public void updateBalanceFromStockOrder(StockOrder stockOrder) throws Exception
+	{
+		if("SELL".equals(stockOrder.getType()))
+		{
+			if(canStockBeSold(stockOrder))
+			{
+				balance += stockOrder.getAmount() * stockOrder.getPrice();
+			}
+			else
+			throw new Exception("not enough Stocks");
+			
+		}
+		else
+		{
+			if(canStockBeBought(stockOrder))
+			{
+				balance -= stockOrder.getAmount() * stockOrder.getPrice();
+			}
+			else
+				throw new Exception("not enough cash");
+		}
+	}
+	
+	
+	public void updateCurrentStocks(StockOrder stockOrder) throws Exception
+	{
+		if("BUY".equals(stockOrder.getType()))
+		{
+			buyStocks(stockOrder);
+		}
+		else {
+			if("SELL".equals(stockOrder.getType()))
+		{
+			sellStocks(stockOrder);
+		}
+			throw new Exception("unsupported operation");
+		    }		
+	}
+	
+	
 	public void addStocksOrder(StockOrder stockOrder) throws Exception
 	{
 		System.out.println(stockOrder+"inside Stock Order");
+		
+		
 		updateBalanceFromStockOrder(stockOrder);
 		
 		stockOrderHistory.add(stockOrder);
-		
 		
 		
 		updateCurrentStocks(stockOrder);

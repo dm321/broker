@@ -94,18 +94,4 @@ public class DepotServiceImpl implements DepotService {
 	}
 
 
-	/*@Override
-	public Optional<Depot> buyStock(String email, String ticker, double price, double amount) {
-		
-            if (email !=null)
-			
-			user = userRepo.findByEmail(email);
-            {
-		    	user.getDepot().withdraw(amount);
-		    	userRepo.save(user);
-		    	return Optional.of(user.getDepot());
-		    }
-		return null;
-	}
-*/
 
