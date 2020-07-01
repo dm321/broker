@@ -1,11 +1,9 @@
-package com.dm.broker.mode.dto;
+package com.dm.broker.model;
 
 import javax.persistence.CascadeType;
 import javax.persistence.OneToOne;
 
 import org.springframework.stereotype.Component;
-
-import com.dm.broker.model.Depot;
 
 @Component
 public class UserDTO {

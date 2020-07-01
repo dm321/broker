@@ -1,96 +1,221 @@
 package com.dm.broker.model;
 
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import javax.persistence.CascadeType;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.MapKey;
 import javax.persistence.OneToMany;
 
 import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Component
 public class Depot {
 
 	@Id
-	@GeneratedValue
+	@GeneratedValue(strategy = GenerationType.AUTO)
 	private long depotId;
-	private BigDecimal balance;
-	@OneToMany (cascade = {CascadeType.ALL})
-	private List<Stock> purchasedStocks = new ArrayList<Stock>();
+	private double balance;
+	@OneToMany (cascade = {CascadeType.ALL},targetEntity = StockOrder.class)
+	private List<StockOrder> stockOrderHistory = new ArrayList<>();
 	
+	@OneToMany (cascade = {CascadeType.ALL},targetEntity = CurrentHolding.class)
+	private List<CurrentHolding> currentStocks = new ArrayList<>();
 	
 	
 	public Depot() {
 		
 	}
-	public Depot(long depotId, BigDecimal balance, List<Stock> purchasedStocks) {
-		super();
-		this.depotId = depotId;
-		this.balance = balance;
-		this.purchasedStocks = purchasedStocks;
+	
+	public boolean isStockPresent(Stock stock)
+	{
+		
+	boolean isPresent =	currentStocks.stream().anyMatch(holding -> holding.getStock().getTicker().equals(stock.getTicker()));
+	return isPresent;
+	
 	}
-	@Override
-	public String toString() {
-		return "Depot [depotId=" + depotId + ", balance=" + balance + ", purchasedStocks=" + purchasedStocks + "]";
+	
+	public boolean canStockBeSold(StockOrder stockOrder)
+	{
+		if(isStockPresent(stockOrder.getStock()))
+		{
+			boolean canAmountBeSold =  currentStocks.stream().filter(holding -> holding.getStock().getTicker().equals(stockOrder.getStock().getTicker()))
+			                      .findFirst().map(CurrentHolding::getAmount)
+			                      .map(amount -> amount >=stockOrder.getAmount()?true:false).get();
+			if(canAmountBeSold)
+				return true;
+			else
+				return false;
+		}
+		else
+			return false;
+		
 	}
-	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((balance == null) ? 0 : balance.hashCode());
-		result = prime * result + (int) (depotId ^ (depotId >>> 32));
-		result = prime * result + ((purchasedStocks == null) ? 0 : purchasedStocks.hashCode());
-		return result;
-	}
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj)
+	
+	
+	
+	public boolean canStockBeBought(StockOrder stockOrder)
+	{
+		double totalCost = stockOrder.getAmount() * stockOrder.getPrice();
+		
+		if(balance >= totalCost)
 			return true;
-		if (obj == null)
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		Depot other = (Depot) obj;
-		if (balance == null) {
-			if (other.balance != null)
+			else
 				return false;
-		} else if (!balance.equals(other.balance))
-			return false;
-		if (depotId != other.depotId)
-			return false;
-		if (purchasedStocks == null) {
-			if (other.purchasedStocks != null)
-				return false;
-		} else if (!purchasedStocks.equals(other.purchasedStocks))
-			return false;
-		return true;
 	}
+
+	
+	
+	
+	public void updateBalanceFromStockOrder(StockOrder stockOrder) throws Exception
+	{
+		if("SELL".equals(stockOrder.getType()))
+		{
+			if(canStockBeSold(stockOrder))
+			{
+				balance += stockOrder.getAmount() * stockOrder.getPrice();
+			}
+			else
+			throw new Exception("not enough Stocks");
+			
+		}
+		else
+		{
+			if(canStockBeBought(stockOrder))
+			{
+				balance -= stockOrder.getAmount() * stockOrder.getPrice();
+			}
+			else
+				throw new Exception("not enough cash");
+		}
+	}
+	
+	
+	public void updateCurrentStocks(StockOrder stockOrder)
+	{
+		Stock innerStock = new Stock();
+		innerStock.setPrice(stockOrder.getPrice());
+		innerStock.setTicker(stockOrder.getStock().getTicker());
+		
+		CurrentHolding newestHolding = new CurrentHolding();
+		boolean isTickerPresent;
+		String orderTicker = stockOrder.getStock().getTicker();
+		System.out.println("before loop Ticker");
+		isTickerPresent = currentStocks.stream().anyMatch(holding -> holding.getStock().getTicker().equals(orderTicker));
+		newestHolding.setAmount(stockOrder.getAmount());
+		newestHolding.setStock(stockOrder.getStock()); 
+		newestHolding.setValue(newestHolding.getAmount()*newestHolding.getStock().getPrice());
+		
+		if (!isTickerPresent)
+		{
+			currentStocks.add(newestHolding);
+			System.out.println(newestHolding+"   TEST");
+		}
+		else
+		{
+			newestHolding.setAmount(stockOrder.getAmount());
+			newestHolding.setStock(innerStock);
+			newestHolding.setValue(innerStock.getPrice()*stockOrder.getAmount());
+			
+			
+			
+			for(CurrentHolding oldHolding: currentStocks)
+			{ 
+				
+				if(oldHolding.getStock().getTicker().equals(newestHolding.getStock().getTicker()))
+				{
+					newestHolding.getStock().setPrice((oldHolding.getValue()+newestHolding.getValue())/(oldHolding.getAmount()+newestHolding.getAmount()));
+				
+					newestHolding.setAmount(newestHolding.getAmount()+oldHolding.getAmount());
+		
+					newestHolding.setValue(newestHolding.getStock().getPrice()*newestHolding.getAmount());		
+				}
+				
+				currentStocks.removeIf(holding -> holding.getStock().getTicker().equals(stockOrder.getStock().getTicker()));
+				currentStocks.add(newestHolding);
+						
+			}                    
+		}
+		
+	}
+	
+	
+	public void addStocksOrder(StockOrder stockOrder) throws Exception
+	{
+		System.out.println(stockOrder+"inside Stock Order");
+		updateBalanceFromStockOrder(stockOrder);
+		
+		stockOrderHistory.add(stockOrder);
+		
+		
+		
+		updateCurrentStocks(stockOrder);
+		
+		System.out.println(this);
+		
+		
+	}
+	public void makeDeposit(double deposit)
+	{
+		balance += deposit;
+	}
+	public double withdraw(double withdrawAmount)
+	{
+		balance -= withdrawAmount;
+		return balance;
+	}
+	
+	public List<CurrentHolding> getCurrentStocks() {
+		return currentStocks;
+	}
+
+	public void setCurrentStocks(List<CurrentHolding> currentStocks) {
+		this.currentStocks = currentStocks;
+	}
+
+	@JsonIgnore
 	public long getDepotId() {
 		return depotId;
 	}
+	@JsonIgnore
 	public void setDepotId(long depotId) {
 		this.depotId = depotId;
 	}
-	public BigDecimal getBalance() {
+	public double getBalance() {
 		return balance;
 	}
-	public void setBalance(BigDecimal balance) {
+	public void setBalance(double balance) {
 		this.balance = balance;
 	}
-	public List<Stock> getPurchasedStocks() {
-		return purchasedStocks;
+
+	public List<StockOrder>  getStockOrderHistory() {
+		return stockOrderHistory;
 	}
-	public void setPurchasedStocks(List<Stock> purchasedStocks) {
-		this.purchasedStocks = purchasedStocks;
+
+	public void setStockOrderHistory(List<StockOrder> stockOrderHistory ) {
+		this.stockOrderHistory = stockOrderHistory;
 	}
-	
-	
-	
+
+	@Override
+	public String toString() {
+		return "Depot [depotId=" + depotId + ", balance=" + balance + ", stockOrderHistory=" + stockOrderHistory
+				+ ", currentStocks=" + currentStocks + "]";
+	}
+
+
 	
 }
